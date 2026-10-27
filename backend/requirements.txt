@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+bcrypt
+PyJWT
+python-dotenv
+python-multipart
+
+# testing
+pytest
+httpx

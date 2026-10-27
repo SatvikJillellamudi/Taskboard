@@ -1,0 +1,19 @@
+# secrets and local data
+.env
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Node (frontend, coming in week 2)
+node_modules/
+dist/
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store

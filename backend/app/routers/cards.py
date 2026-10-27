@@ -1,0 +1,56 @@
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlmodel import Session
+
+from ..access import get_card_or_404, get_list_or_404, next_position
+from ..auth import get_current_user
+from ..database import get_session
+from ..models import Card, User
+from ..schemas import CardCreate, CardRead, CardUpdate
+
+router = APIRouter(tags=["cards"])
+
+
+@router.post("/lists/{list_id}/cards", response_model=CardRead, status_code=status.HTTP_201_CREATED)
+def create_card(list_id: int, data: CardCreate, user: User = Depends(get_current_user),
+                session: Session = Depends(get_session)):
+    lst = get_list_or_404(list_id, user, session)
+    card = Card(list_id=lst.id, title=data.title.strip(), description=data.description,
+                position=next_position(session, Card, Card.list_id, lst.id))
+    session.add(card)
+    session.commit()
+    session.refresh(card)
+    return card
+
+
+@router.patch("/cards/{card_id}", response_model=CardRead)
+def update_card(card_id: int, data: CardUpdate, user: User = Depends(get_current_user),
+                session: Session = Depends(get_session)):
+    """Edit a card, reorder it (position), or move it to another list (list_id)."""
+    card = get_card_or_404(card_id, user, session)
+    if data.list_id is not None and data.list_id != card.list_id:
+        source = get_list_or_404(card.list_id, user, session)
+        target = get_list_or_404(data.list_id, user, session)
+        if target.board_id != source.board_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Can only move cards within the same board")
+        card.list_id = target.id
+        if data.position is None:  # no position given: drop it at the end of the new list
+            card.position = next_position(session, Card, Card.list_id, target.id)
+    if data.title is not None:
+        card.title = data.title.strip()
+    if data.description is not None:
+        card.description = data.description
+    if data.position is not None:
+        card.position = data.position
+    session.add(card)
+    session.commit()
+    session.refresh(card)
+    return card
+
+
+@router.delete("/cards/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_card(card_id: int, user: User = Depends(get_current_user),
+                session: Session = Depends(get_session)):
+    card = get_card_or_404(card_id, user, session)
+    session.delete(card)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
