@@ -5,7 +5,7 @@ card and everyone viewing the board sees it move instantly.
 
 **Stack:** React (Vite) · FastAPI (Python) · SQLite locally / PostgreSQL in production · WebSockets · dnd-kit
 
-**Status:** Weeks 1-2 complete. Auth, data model, secured REST API, React frontend,
+**Status:** Auth, data model, secured REST API, React frontend,
 drag-and-drop, real-time sync, presence. Deployment is next.
 
 <!-- Add a GIF here of two browser windows syncing: it is the best demo of this project. -->
@@ -92,8 +92,3 @@ React app ──REST (create/update/delete)──▶ FastAPI ──▶ Database 
 | `frontend/src/useBoardSocket.js` | WebSocket hook with auto-reconnect |
 | `frontend/src/pages/BoardPage.jsx` | The board: drag-and-drop, live updates, presence |
 | `e2e/` | Two-user browser test |
-
-## Roadmap
-- [x] Week 1: auth, data model, secured REST API, tests
-- [x] Week 2: React frontend, drag-and-drop, real-time sync, presence, end-to-end test
-- [ ] Week 3: deploy (Postgres, migrations, production config), polish
