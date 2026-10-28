@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlmodel import Session, or_, select
 
 from ..access import get_board_or_404
+from ..board_view import build_board_detail
+from ..realtime import queue_board_deleted, queue_board_update
 from ..auth import get_current_user
 from ..database import get_session
 from ..models import Board, BoardMember, Card, TaskList, User
-from ..schemas import (BoardCreate, BoardDetail, BoardRead, BoardUpdate, CardRead,
-                       ListWithCards, MemberAdd, UserRead)
+from ..schemas import BoardCreate, BoardDetail, BoardRead, BoardUpdate, MemberAdd, UserRead
 
 router = APIRouter(prefix="/boards", tags=["boards"])
 
@@ -32,37 +33,23 @@ def create_board(data: BoardCreate, user: User = Depends(get_current_user),
 def get_board(board_id: int, user: User = Depends(get_current_user),
               session: Session = Depends(get_session)):
     """The full board: lists in order, each with its cards in order."""
-    board = get_board_or_404(board_id, user, session)
-    lists = session.exec(
-        select(TaskList).where(TaskList.board_id == board.id).order_by(TaskList.position)
-    ).all()
-    list_ids = [l.id for l in lists]
-    cards = session.exec(
-        select(Card).where(Card.list_id.in_(list_ids)).order_by(Card.position)
-    ).all() if list_ids else []
-    by_list: dict[int, list[CardRead]] = {l.id: [] for l in lists}
-    for c in cards:
-        by_list[c.list_id].append(CardRead.model_validate(c, from_attributes=True))
-    return BoardDetail(
-        id=board.id, name=board.name, owner_id=board.owner_id,
-        lists=[ListWithCards(id=l.id, board_id=l.board_id, title=l.title,
-                             position=l.position, cards=by_list[l.id]) for l in lists],
-    )
+    return build_board_detail(get_board_or_404(board_id, user, session), session)
 
 
 @router.patch("/{board_id}", response_model=BoardRead)
-def rename_board(board_id: int, data: BoardUpdate, user: User = Depends(get_current_user),
-                 session: Session = Depends(get_session)):
+def rename_board(board_id: int, data: BoardUpdate, bg: BackgroundTasks,
+                 user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     board = get_board_or_404(board_id, user, session)
     board.name = data.name.strip()
     session.add(board)
     session.commit()
     session.refresh(board)
+    queue_board_update(bg, board, session)
     return board
 
 
 @router.delete("/{board_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_board(board_id: int, user: User = Depends(get_current_user),
+def delete_board(board_id: int, bg: BackgroundTasks, user: User = Depends(get_current_user),
                  session: Session = Depends(get_session)):
     board = get_board_or_404(board_id, user, session)
     if board.owner_id != user.id:
@@ -77,6 +64,7 @@ def delete_board(board_id: int, user: User = Depends(get_current_user),
         session.delete(m)
     session.delete(board)
     session.commit()
+    queue_board_deleted(bg, board_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

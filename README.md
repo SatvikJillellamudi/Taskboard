@@ -1,67 +1,99 @@
 # Taskboard: Real-Time Collaborative Task Board
 
-A Trello-style board where multiple users collaborate on shared boards in real time.
-React frontend (coming), FastAPI backend, PostgreSQL in production, WebSockets for live sync.
+A Trello-style board where multiple people work on shared boards at the same time. Move a
+card and everyone viewing the board sees it move instantly.
 
-**Status:** backend with auth, data model, secured REST API, and tests.
+**Stack:** React (Vite) · FastAPI (Python) · SQLite locally / PostgreSQL in production · WebSockets · dnd-kit
 
-## Backend quick start (Windows, Git Bash)
+**Status:** Weeks 1-2 complete. Auth, data model, secured REST API, React frontend,
+drag-and-drop, real-time sync, presence. Deployment is next.
 
+<!-- Add a GIF here of two browser windows syncing: it is the best demo of this project. -->
+
+## Features
+- Accounts with hashed passwords and JWT authentication
+- Boards with lists and cards; create, rename, edit, delete
+- Drag-and-drop cards within and between lists (mouse and keyboard)
+- **Real-time sync:** every change is pushed to everyone viewing the board
+- **Presence:** see who else is on the board right now
+- Share a board with another user by email; owners control deletion and invites
+- Auto-reconnect with backoff if the connection drops
+
+## Run it locally (Windows, Git Bash)
+
+**Backend** (terminal 1):
 ```bash
 cd backend
 python -m venv .venv
-source .venv/Scripts/activate        # Mac/Linux: source .venv/bin/activate
+source .venv/Scripts/activate
 python -m pip install -r requirements.txt
-cp .env.example .env                 # then paste a real JWT_SECRET into .env
+cp .env.example .env               # paste a real JWT_SECRET into .env
 python -m uvicorn app.main:app --reload
 ```
 
-Open http://127.0.0.1:8000/docs for interactive API docs. Sign up via `POST /auth/signup`,
-then click **Authorize** (top right) and log in with your email as the username. Every
-request after that is authenticated automatically.
+**Frontend** (terminal 2):
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open http://localhost:5173. To see real-time sync, sign up two accounts (use a normal
+window and an incognito window), share a board from one to the other, and open it in both.
 
-Run the tests: `python -m pytest -q`
+API docs: http://127.0.0.1:8000/docs
 
-(`python -m uvicorn` and `python -m pytest` avoid the Windows "command not found" PATH issue.)
-
-## How the backend is organized
-
-| File | What it does |
-|---|---|
-| `app/main.py` | Creates the app, enables CORS, mounts the routers |
-| `app/config.py` | Settings from environment variables (`.env`) |
-| `app/database.py` | Database engine and the per-request session dependency |
-| `app/models.py` | Database tables: users, boards, board_members, lists, cards |
-| `app/schemas.py` | Request/response shapes (keeps password hashes out of responses) |
-| `app/auth.py` | bcrypt hashing, JWT creation/validation, `get_current_user` |
-| `app/access.py` | Access control: who can see which board, list, or card |
-| `app/routers/` | The endpoints, grouped by resource |
-| `tests/` | 12 tests: auth, CRUD, reordering, access control, cascade delete |
-
-## API
-
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/auth/signup` | Create an account |
-| POST | `/auth/login` | Get a JWT (form: username=email, password) |
-| GET | `/auth/me` | Current user |
-| GET / POST | `/boards` | Boards you own or are a member of / create one |
-| GET / PATCH / DELETE | `/boards/{id}` | Full board with lists and cards / rename / delete (owner) |
-| GET / POST | `/boards/{id}/members` | List members / invite by email (owner) |
-| POST | `/boards/{id}/lists` | Add a list |
-| PATCH / DELETE | `/lists/{id}` | Rename or reorder / delete a list |
-| POST | `/lists/{id}/cards` | Add a card |
-| PATCH / DELETE | `/cards/{id}` | Edit, reorder, or move a card / delete it |
+## Architecture
+```
+React app ──REST (create/update/delete)──▶ FastAPI ──▶ Database (source of truth)
+    ▲                                         │
+    └──────── WebSocket: updated board ◀──────┘  broadcast to everyone on that board
+```
+1. A user changes something; the frontend sends a normal REST request.
+2. FastAPI checks permissions, writes to the database, and responds.
+3. After responding, it broadcasts the updated board over WebSockets to every viewer.
+4. Each client replaces its local board with the server's version.
 
 ## Design decisions
-
-- **JWT auth**: the API stays stateless; the frontend sends `Authorization: Bearer <token>`.
-  Passwords are hashed with bcrypt (salted, deliberately slow).
+- **REST for changes, WebSockets for notifications.** Writes go through normal, testable,
+  permission-checked endpoints. The socket only pushes results, so the database is always
+  the source of truth and a page refresh always shows the real state.
+- **Broadcast the full board, not deltas.** Every client gets the authoritative snapshot, so
+  clients can never drift out of sync. Fine at this scale; very large boards would switch to
+  sending only the changed items.
+- **Optimistic drag-and-drop.** A dropped card moves instantly on your screen, and the
+  server's broadcast confirms it. If the request fails, the board reloads to the true state.
+- **No jumping mid-drag.** If another user's change arrives while you're dragging, it's held
+  until you drop, so the board doesn't shift under your cursor.
+- **Float positions.** Dropping a card between positions 1 and 2 gives it 1.5, so a move
+  updates one row instead of renumbering the whole list.
+- **JWT in the WebSocket URL.** Browsers can't set headers on WebSocket connections, so the
+  token goes in the query string and is validated before the socket joins the board.
 - **404 instead of 403** for boards you can't access, so the API never confirms a private
   board exists.
-- **Float positions** for ordering: dragging a card between positions 1 and 2 gives it 1.5,
-  with no need to renumber everything else.
-- **One access-control module**: every lookup goes through `access.py`, so permission rules
-  live in one place instead of being repeated (and possibly forgotten) in each endpoint.
-- **SQLite locally, Postgres in production**: same code, switched by `DATABASE_URL`.
+- **Known limit:** connected sockets live in one server's memory. Running several server
+  instances would need a shared pub/sub layer such as Redis.
 
+## Testing
+- **Backend:** 17 pytest tests covering auth, CRUD, reordering, access control, cascade
+  deletes, and WebSockets (token rejection, access rejection, presence, live broadcast).
+  Run: `cd backend && python -m pytest -q`
+- **End-to-end:** `e2e/test_two_users.py` drives two real browsers as two users and checks
+  sharing, presence, live updates, drag-and-drop across and within lists, and persistence
+  across reloads (9 checks). Setup instructions are at the top of the file.
+
+## Project structure
+| Path | What it does |
+|---|---|
+| `backend/app/auth.py` | bcrypt hashing, JWTs, current-user dependency |
+| `backend/app/access.py` | Who can access which board, list, or card |
+| `backend/app/realtime.py` | WebSocket connection manager, presence, broadcasts |
+| `backend/app/routers/` | REST endpoints and the WebSocket endpoint |
+| `frontend/src/api.js` | Fetch wrapper that attaches the JWT |
+| `frontend/src/useBoardSocket.js` | WebSocket hook with auto-reconnect |
+| `frontend/src/pages/BoardPage.jsx` | The board: drag-and-drop, live updates, presence |
+| `e2e/` | Two-user browser test |
+
+## Roadmap
+- [x] Week 1: auth, data model, secured REST API, tests
+- [x] Week 2: React frontend, drag-and-drop, real-time sync, presence, end-to-end test
+- [ ] Week 3: deploy (Postgres, migrations, production config), polish

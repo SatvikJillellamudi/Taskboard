@@ -30,20 +30,24 @@ def create_access_token(user_id: int) -> str:
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
-def get_current_user(
-    token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)
-) -> User:
-    unauthorized = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired token",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+def user_from_token(token: str, session: Session) -> User | None:
+    """Return the user a token belongs to, or None if the token is invalid or expired."""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         user_id = int(payload["sub"])
     except (jwt.PyJWTError, KeyError, ValueError):
-        raise unauthorized
-    user = session.get(User, user_id)
+        return None
+    return session.get(User, user_id)
+
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)
+) -> User:
+    user = user_from_token(token, session)
     if user is None:
-        raise unauthorized
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user

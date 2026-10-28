@@ -1,17 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlmodel import Session
 
 from ..access import get_card_or_404, get_list_or_404, next_position
 from ..auth import get_current_user
 from ..database import get_session
-from ..models import Card, User
+from ..models import Board, Card, TaskList, User
+from ..realtime import queue_board_update
 from ..schemas import CardCreate, CardRead, CardUpdate
 
 router = APIRouter(tags=["cards"])
 
 
 @router.post("/lists/{list_id}/cards", response_model=CardRead, status_code=status.HTTP_201_CREATED)
-def create_card(list_id: int, data: CardCreate, user: User = Depends(get_current_user),
+def create_card(list_id: int, data: CardCreate, bg: BackgroundTasks, user: User = Depends(get_current_user),
                 session: Session = Depends(get_session)):
     lst = get_list_or_404(list_id, user, session)
     card = Card(list_id=lst.id, title=data.title.strip(), description=data.description,
@@ -19,11 +20,12 @@ def create_card(list_id: int, data: CardCreate, user: User = Depends(get_current
     session.add(card)
     session.commit()
     session.refresh(card)
+    queue_board_update(bg, session.get(Board, lst.board_id), session)
     return card
 
 
 @router.patch("/cards/{card_id}", response_model=CardRead)
-def update_card(card_id: int, data: CardUpdate, user: User = Depends(get_current_user),
+def update_card(card_id: int, data: CardUpdate, bg: BackgroundTasks, user: User = Depends(get_current_user),
                 session: Session = Depends(get_session)):
     """Edit a card, reorder it (position), or move it to another list (list_id)."""
     card = get_card_or_404(card_id, user, session)
@@ -44,13 +46,17 @@ def update_card(card_id: int, data: CardUpdate, user: User = Depends(get_current
     session.add(card)
     session.commit()
     session.refresh(card)
+    board_id = session.get(TaskList, card.list_id).board_id
+    queue_board_update(bg, session.get(Board, board_id), session)
     return card
 
 
 @router.delete("/cards/{card_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_card(card_id: int, user: User = Depends(get_current_user),
+def delete_card(card_id: int, bg: BackgroundTasks, user: User = Depends(get_current_user),
                 session: Session = Depends(get_session)):
     card = get_card_or_404(card_id, user, session)
+    board_id = session.get(TaskList, card.list_id).board_id
     session.delete(card)
     session.commit()
+    queue_board_update(bg, session.get(Board, board_id), session)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
