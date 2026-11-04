@@ -1,5 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
-from sqlmodel import Session, select
+from sqlmodel import Session, delete
 
 from ..access import get_board_or_404, get_list_or_404, next_position
 from ..auth import get_current_user
@@ -43,10 +43,10 @@ def update_list(list_id: int, data: ListUpdate, bg: BackgroundTasks, user: User 
 def delete_list(list_id: int, bg: BackgroundTasks, user: User = Depends(get_current_user),
                 session: Session = Depends(get_session)):
     lst = get_list_or_404(list_id, user, session)
-    for c in session.exec(select(Card).where(Card.list_id == lst.id)).all():
-        session.delete(c)
     board_id = lst.board_id
-    session.delete(lst)
+    # Cards first, then the list, so no card is left pointing at a deleted list
+    session.exec(delete(Card).where(Card.list_id == lst.id))
+    session.exec(delete(TaskList).where(TaskList.id == lst.id))
     session.commit()
     queue_board_update(bg, session.get(Board, board_id), session)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

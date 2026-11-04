@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth.jsx";
+import ServerWakeNotice from "../components/ServerWakeNotice.jsx";
 
 export default function AuthPage() {
   const { user, login, signup } = useAuth();
@@ -34,6 +35,7 @@ export default function AuthPage() {
       <form className="auth-card" onSubmit={submit}>
         <h1>Taskboard</h1>
         <p className="muted">{mode === "login" ? "Log in to your boards" : "Create an account"}</p>
+        <ServerWakeNotice />
         {mode === "signup" && (
           <input placeholder="Name" value={form.name} onChange={update("name")} required />
         )}
@@ -48,6 +50,10 @@ export default function AuthPage() {
                 onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}>
           {mode === "login" ? "No account? Sign up" : "Have an account? Log in"}
         </button>
+        <p className="demo-note">
+          Demo app: sign up with any email (no verification). To see real-time sync, open a
+          board in two windows, or share it with a second account in an incognito window.
+        </p>
       </form>
     </div>
   );

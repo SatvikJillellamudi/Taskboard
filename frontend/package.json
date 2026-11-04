@@ -1,7 +1,7 @@
 {
   "name": "taskboard-frontend",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,5 +19,8 @@
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.2",
     "vite": "^8.3.5"
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }

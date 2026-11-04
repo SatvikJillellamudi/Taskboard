@@ -1,0 +1,42 @@
+# Render Blueprint: deploys the API and the frontend from this repo.
+# The database lives on Neon (free, does not expire); paste its URL when Render asks.
+services:
+  # ---- FastAPI backend ----
+  - type: web
+    name: taskboard-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # Apply any pending migrations, then start the server. Migrating is a no-op when
+    # the schema is already current, so restarts and wake-ups stay fast.
+    startCommand: python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true   # Render creates a random 256-bit secret
+      - key: DATABASE_URL
+        sync: false           # paste your Neon connection string
+      - key: CORS_ORIGINS
+        sync: false           # your frontend URL, e.g. https://taskboard-web.onrender.com
+
+  # ---- React frontend (static files) ----
+  - type: web
+    name: taskboard-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      # Send every path to index.html so React Router handles it. Without this,
+      # refreshing /boards/3 would 404 because no file exists at that path.
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: VITE_API_URL
+        sync: false           # your API URL, e.g. https://taskboard-api.onrender.com

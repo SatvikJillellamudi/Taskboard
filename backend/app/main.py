@@ -10,11 +10,12 @@ from .routers import auth, boards, cards, lists, ws
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()  # create tables on startup
+    settings.check_production()  # fail fast on an unsafe production config
+    init_db()
     yield
 
 
-app = FastAPI(title="Taskboard API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Taskboard API", version="0.3.0", lifespan=lifespan)
 
 # Allow the React dev server (and later the deployed frontend) to call the API
 app.add_middleware(

@@ -5,6 +5,8 @@ bcrypt
 PyJWT
 python-dotenv
 python-multipart
+psycopg[binary]
+alembic
 
 # testing
 pytest

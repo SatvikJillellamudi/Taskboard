@@ -1,5 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
-from sqlmodel import Session, or_, select
+from sqlmodel import Session, delete, or_, select
 
 from ..access import get_board_or_404
 from ..board_view import build_board_detail
@@ -54,15 +54,14 @@ def delete_board(board_id: int, bg: BackgroundTasks, user: User = Depends(get_cu
     board = get_board_or_404(board_id, user, session)
     if board.owner_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner can delete a board")
-    # Delete children first (works the same on SQLite and Postgres)
-    lists = session.exec(select(TaskList).where(TaskList.board_id == board.id)).all()
-    for l in lists:
-        for c in session.exec(select(Card).where(Card.list_id == l.id)).all():
-            session.delete(c)
-        session.delete(l)
-    for m in session.exec(select(BoardMember).where(BoardMember.board_id == board.id)).all():
-        session.delete(m)
-    session.delete(board)
+    # Delete in foreign-key order: cards -> lists -> memberships -> board.
+    # Explicit statements make the order guaranteed, so Postgres never sees a row
+    # still pointing at something already deleted.
+    list_ids = select(TaskList.id).where(TaskList.board_id == board.id)
+    session.exec(delete(Card).where(Card.list_id.in_(list_ids)))
+    session.exec(delete(TaskList).where(TaskList.board_id == board.id))
+    session.exec(delete(BoardMember).where(BoardMember.board_id == board.id))
+    session.exec(delete(Board).where(Board.id == board.id))
     session.commit()
     queue_board_deleted(bg, board_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

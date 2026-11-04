@@ -3,10 +3,12 @@
 A Trello-style board where multiple people work on shared boards at the same time. Move a
 card and everyone viewing the board sees it move instantly.
 
-**Stack:** React (Vite) · FastAPI (Python) · SQLite locally / PostgreSQL in production · WebSockets · dnd-kit
+**Stack:** React (Vite) · FastAPI (Python) · PostgreSQL (Neon) · Alembic · WebSockets · dnd-kit · Render
 
-**Status:** Auth, data model, secured REST API, React frontend,
-drag-and-drop, real-time sync, presence. Deployment is next.
+**Live demo:** <!-- your frontend URL here --> (free hosting: the first load can take about a minute while the server wakes up)
+
+**Status:** Complete. Auth, data model, secured REST API, React frontend, drag-and-drop,
+real-time sync, presence, PostgreSQL with migrations, deployed on Render + Neon.
 
 <!-- Add a GIF here of two browser windows syncing: it is the best demo of this project. -->
 
@@ -37,10 +39,17 @@ cd frontend
 npm install
 npm run dev
 ```
+Local development uses SQLite automatically, so there's no database to install. (Locally,
+tables are created on startup; don't run `alembic` against the local SQLite file.)
+
 Open http://localhost:5173. To see real-time sync, sign up two accounts (use a normal
 window and an incognito window), share a board from one to the other, and open it in both.
 
 API docs: http://127.0.0.1:8000/docs
+
+## Deployment
+Render (API + static frontend, defined in `render.yaml`) with Neon (PostgreSQL).
+Step-by-step instructions: [DEPLOY.md](DEPLOY.md).
 
 ## Architecture
 ```
@@ -70,12 +79,25 @@ React app ──REST (create/update/delete)──▶ FastAPI ──▶ Database 
   token goes in the query string and is validated before the socket joins the board.
 - **404 instead of 403** for boards you can't access, so the API never confirms a private
   board exists.
+- **Migrations, not create-on-startup.** In production the schema is managed by Alembic;
+  the start command runs `alembic upgrade head`, which is a no-op when nothing changed.
+- **Survives database sleep.** Neon closes idle connections, so the connection pool checks a
+  connection is alive before using it (`pool_pre_ping`). Tested by killing every pooled
+  connection mid-session: the next request still succeeds.
+- **Fails fast on unsafe config.** In production the app refuses to start with the default
+  JWT secret or a SQLite database, instead of running insecurely or silently losing data.
+- **Local SQLite enforces foreign keys** like Postgres does, so dev and production reject the
+  same invalid writes.
 - **Known limit:** connected sockets live in one server's memory. Running several server
   instances would need a shared pub/sub layer such as Redis.
 
 ## Testing
-- **Backend:** 17 pytest tests covering auth, CRUD, reordering, access control, cascade
-  deletes, and WebSockets (token rejection, access rejection, presence, live broadcast).
+- **Backend:** 22 pytest tests covering auth, CRUD, reordering, access control, cascade
+  deletes, WebSockets (token rejection, access rejection, presence, live broadcast), and
+  production config safety. They run on SQLite by default and on real PostgreSQL with
+  `TEST_DATABASE_URL=postgresql://...`. Running them on Postgres caught a foreign-key ordering
+  bug in board deletion that SQLite had hidden; it's fixed, and SQLite now enforces foreign
+  keys too so that class of bug shows up locally.
   Run: `cd backend && python -m pytest -q`
 - **End-to-end:** `e2e/test_two_users.py` drives two real browsers as two users and checks
   sharing, presence, live updates, drag-and-drop across and within lists, and persistence
@@ -91,4 +113,11 @@ React app ──REST (create/update/delete)──▶ FastAPI ──▶ Database 
 | `frontend/src/api.js` | Fetch wrapper that attaches the JWT |
 | `frontend/src/useBoardSocket.js` | WebSocket hook with auto-reconnect |
 | `frontend/src/pages/BoardPage.jsx` | The board: drag-and-drop, live updates, presence |
+| `backend/alembic/` | Database migrations |
+| `render.yaml` | Deployment blueprint (Render) |
 | `e2e/` | Two-user browser test |
+
+## Roadmap
+- [x] Week 1: auth, data model, secured REST API, tests
+- [x] Week 2: React frontend, drag-and-drop, real-time sync, presence, end-to-end test
+- [x] Week 3: PostgreSQL, Alembic migrations, production config, deploy setup, server-waking notice
