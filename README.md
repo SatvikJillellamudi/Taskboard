@@ -5,12 +5,10 @@ card and everyone viewing the board sees it move instantly.
 
 **Stack:** React (Vite) · FastAPI (Python) · PostgreSQL (Neon) · Alembic · WebSockets · dnd-kit · Render
 
-**Live demo:** <!-- your frontend URL here --> (free hosting: the first load can take about a minute while the server wakes up)
+**Live demo:** https://taskboard-web-bvcc.onrender.com (free hosting: the first load can take about a minute while the server wakes up)
 
 **Status:** Complete. Auth, data model, secured REST API, React frontend, drag-and-drop,
 real-time sync, presence, PostgreSQL with migrations, deployed on Render + Neon.
-
-<!-- Add a GIF here of two browser windows syncing: it is the best demo of this project. -->
 
 ## Features
 - Accounts with hashed passwords and JWT authentication
@@ -29,7 +27,7 @@ cd backend
 python -m venv .venv
 source .venv/Scripts/activate
 python -m pip install -r requirements.txt
-cp .env.example .env               # paste a real JWT_SECRET into .env
+cp .env.example .env
 python -m uvicorn app.main:app --reload
 ```
 
@@ -49,7 +47,6 @@ API docs: http://127.0.0.1:8000/docs
 
 ## Deployment
 Render (API + static frontend, defined in `render.yaml`) with Neon (PostgreSQL).
-Step-by-step instructions: [DEPLOY.md](DEPLOY.md).
 
 ## Architecture
 ```
@@ -116,8 +113,3 @@ React app ──REST (create/update/delete)──▶ FastAPI ──▶ Database 
 | `backend/alembic/` | Database migrations |
 | `render.yaml` | Deployment blueprint (Render) |
 | `e2e/` | Two-user browser test |
-
-## Roadmap
-- [x] Week 1: auth, data model, secured REST API, tests
-- [x] Week 2: React frontend, drag-and-drop, real-time sync, presence, end-to-end test
-- [x] Week 3: PostgreSQL, Alembic migrations, production config, deploy setup, server-waking notice

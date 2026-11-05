@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Taskboard API", version="0.3.0", lifespan=lifespan)
 
-# Allow the React dev server (and later the deployed frontend) to call the API
+# Allow the React dev server and the deployed frontend to call the API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
